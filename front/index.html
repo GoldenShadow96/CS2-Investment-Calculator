@@ -3,93 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Symulator Inwestycji CSGO</title>
+  <title>Symulator Inwestycji CS2</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 2rem;
-      background: #f2f2f2;
-    }
-    .container {
-      max-width: 700px;
-      margin: auto;
-      background: white;
-      padding: 2rem;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-    label {
-      display: block;
-      margin-top: 1rem;
-    }
-    input {
-      width: 100%;
-      padding: 0.5rem;
-      margin-top: 0.3rem;
-    }
-    button {
-      margin-top: 1rem;
-      padding: 0.75rem 1.5rem;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .result, .break-even, .cycle-status {
-      margin-top: 1rem;
-      font-weight: bold;
-    }
-    ul {
-      margin-top: 1rem;
-      padding: 0;
-      list-style-type: none;
-    }
-    li {
-      margin-bottom: 0.5rem;
-      padding: 0.5rem;
-      background-color: #f9f9f9;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-    }
-    .ignore-button, .delete-button {
-      margin-left: 10px;
-      background-color: #dc3545;
-      color: white;
-      border: none;
-      padding: 0.3rem 0.5rem;
-      cursor: pointer;
-      border-radius: 3px;
-    }
-    .ignore-button {
-      background-color: #ffc107;
-      color: black;
-    }
+    body { font-family: Arial, sans-serif; padding: 2rem; background: #f2f2f2; }
+    .container { max-width: 700px; margin: auto; background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    label { display: block; margin-top: 1rem; }
+    input { width: 100%; padding: 0.5rem; margin-top: 0.3rem; }
+    button { margin-top: 1rem; padding: 0.75rem 1.5rem; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    .result, .break-even, .cycle-status, .roi { margin-top: 1rem; font-weight: bold; }
+    ul { margin-top: 1rem; padding: 0; list-style-type: none; }
+    li { margin-bottom: 0.5rem; padding: 0.5rem; background-color: #f9f9f9; border: 1px solid #ddd; border-radius: 5px; }
+    .ignore-button, .delete-button { margin-left: 10px; background-color: #dc3545; color: white; border: none; padding: 0.3rem 0.5rem; cursor: pointer; border-radius: 3px; }
+    .ignore-button { background-color: #ffc107; color: black; }
+    .positive { color: #0a802a; }
+    .negative { color: #b30000; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Symulator Inwestycji CSGO</h1>
 
-    <label for="steamRevenue">Przychód ze sprzedaży na Steam (zł):</label>
-    <input type="number" id="steamRevenue" placeholder="np. 27.40" step="0.01">
+    <label for="steamRevenue">Kapitał wejściowy z poprzedniej sprzedaży na Steam (zł netto):</label>
+    <input type="number" id="steamRevenue" placeholder="np. 27.00" step="0.01">
 
-    <label for="targetSellPrice">Docelowa cena sprzedaży skinu na Steam (brutto):</label>
-    <input type="number" id="targetSellPrice" placeholder="np. 31.48" step="0.01">
+    <label for="targetSellPrice">Planowana (lub osiągnięta) cena sprzedaży nowego skinu na Steam (brutto):</label>
+    <input type="number" id="targetSellPrice" placeholder="np. 32.20" step="0.01">
 
     <label for="dmarketBuyPrice">Cena zakupu na DMarket (zł):</label>
-    <input type="number" id="dmarketBuyPrice" placeholder="np. 27.40" step="0.01">
+    <input type="number" id="dmarketBuyPrice" placeholder="np. 27.00" step="0.01">
 
     <label for="dmarketFee">Prowizja DMarket (%):</label>
     <input type="number" id="dmarketFee" placeholder="np. 5" step="0.1">
 
-    <button onclick="simulateInvestment()">Symuluj</button>
+    <button onclick="simulateInvestment()">Symuluj cykl</button>
 
-    <div class="result" id="result"></div>
     <div class="break-even" id="breakEven"></div>
+    <div class="result" id="result"></div>
+    <div class="roi" id="roi"></div>
     <div class="cycle-status" id="cycleStatus"></div>
+
     <div>
-      <h3>Historia transakcji:</h3>
+      <h3>Historia cykli:</h3>
       <ul id="historyList"></ul>
     </div>
   </div>
@@ -99,51 +53,69 @@
     const historyList = document.getElementById('historyList');
 
     async function loadTransactions() {
-      const res = await fetch(`${API_BASE}/transactions`);
-      const data = await res.json();
-      renderHistory(data);
+      try {
+        const res = await fetch(`${API_BASE}/transactions`);
+        const data = await res.json();
+        renderHistory(data);
+      } catch (e) {
+        console.error('Błąd pobierania transakcji', e);
+      }
     }
 
+    function format(num) { return Number(num).toFixed(2); }
+
     async function simulateInvestment() {
-      const steamRevenue = parseFloat(document.getElementById('steamRevenue').value);
-      const targetSellPrice = parseFloat(document.getElementById('targetSellPrice').value);
+      const steamRevenue = parseFloat(document.getElementById('steamRevenue').value); // kapitał początkowy (netto)
+      const targetSellPrice = parseFloat(document.getElementById('targetSellPrice').value); // cena brutto końcowa
       const dmarketBuyPrice = parseFloat(document.getElementById('dmarketBuyPrice').value);
       const dmarketFee = parseFloat(document.getElementById('dmarketFee').value);
 
-      if (isNaN(steamRevenue) || isNaN(targetSellPrice) || isNaN(dmarketBuyPrice) || isNaN(dmarketFee)) {
+      if ([steamRevenue, targetSellPrice, dmarketBuyPrice, dmarketFee].some(v => isNaN(v))) {
         document.getElementById('result').textContent = 'Uzupełnij wszystkie pola poprawnie.';
         return;
       }
 
+      // Netto ze sprzedaży Steam (po 13% prowizji)
       const steamNet = targetSellPrice * 0.87;
+
+      // Koszt zakupu na DMarket (brutto + prowizja DMarket) - informacyjnie
       const dmarketNet = dmarketBuyPrice * (1 + dmarketFee / 100);
-      const finalProfit = steamNet - steamRevenue;
+
+      // Zysk cyklu: ile mam po sprzedaży (steamNet) vs kapitał wejściowy (steamRevenue)
+      const cycleProfit = steamNet - steamRevenue;
+      const roi = (cycleProfit / steamRevenue) * 100; // procentowy zwrot cyklu
+
+      // Break-even: cena brutto na Steam potrzebna aby wyjść na zero względem kapitału początkowego
       const breakEvenPrice = steamRevenue / 0.87;
-      const requiredGrowth = steamRevenue * (1 + 0.15);
-      const requiredTargetSell = requiredGrowth / 0.87;
 
-      document.getElementById('result').textContent = `Zysk netto w pętli inwestycyjnej: ${finalProfit.toFixed(2)} zł`;
-      document.getElementById('breakEven').textContent = `Minimalna cena sprzedaży na Steam do wyjścia na zero: ${breakEvenPrice.toFixed(2)} zł`;
+      document.getElementById('breakEven').textContent = `Cena brutto Steam potrzebna do wyjścia na zero: ${format(breakEvenPrice)} zł`;
+      document.getElementById('result').textContent = `Zysk netto cyklu: ${format(cycleProfit)} zł (kapitał końcowy: ${format(steamNet)} zł)`;
+      document.getElementById('roi').textContent = `ROI cyklu: ${format(roi)}%`;
 
-      const cycleOk = targetSellPrice >= requiredTargetSell;
-      document.getElementById('cycleStatus').textContent = cycleOk
-        ? `✅ Cel osiągnięty: target >= ${requiredTargetSell.toFixed(2)} zł (15% wzrost)`
-        : `❌ Cel NIEosiągnięty: wymagane minimum to ${requiredTargetSell.toFixed(2)} zł (15% wzrost)`;
+      document.getElementById('cycleStatus').innerHTML = cycleProfit > 0
+        ? `<span class="positive">Cykl dodatni ✔︎</span>`
+        : (cycleProfit === 0 ? 'Cykl na zero' : `<span class="negative">Cykl ujemny ✘</span>`);
 
       const transaction = {
         buy: dmarketBuyPrice,
         sell: targetSellPrice,
-        profit: finalProfit,
+        profit: cycleProfit,
+        roi: roi,
+        startCapital: steamRevenue,
+        endCapital: steamNet,
         ignored: false
       };
 
-      await fetch(`${API_BASE}/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(transaction)
-      });
-
-      loadTransactions();
+      try {
+        await fetch(`${API_BASE}/transactions`, {
+          method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(transaction)
+        });
+        loadTransactions();
+      } catch (e) {
+        console.error('Błąd zapisu transakcji', e);
+      }
     }
 
     async function deleteTransaction(index) {
@@ -164,7 +136,8 @@
       historyList.innerHTML = '';
       transactions.forEach((tx, index) => {
         const li = document.createElement('li');
-        li.textContent = `Kupno: ${tx.buy.toFixed(2)} zł, Sprzedaż: ${tx.sell.toFixed(2)} zł, Zysk: ${tx.profit.toFixed(2)} zł ${tx.ignored ? '(Zignorowany)' : ''}`;
+        const status = tx.profit > 0 ? '✔︎' : (tx.profit === 0 ? '=' : '✘');
+        li.innerHTML = `Start: ${format(tx.startCapital)} zł → Koniec: ${format(tx.endCapital)} zł | Zysk: ${format(tx.profit)} zł | ROI: ${format(tx.roi)}% ${status} ${tx.ignored ? '(Zignorowany)' : ''}`;
 
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Usuń';

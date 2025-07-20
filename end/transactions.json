@@ -1,116 +1,47 @@
 [
   {
-    "buy": 234,
-    "sell": 345,
-    "profit": 66.14999999999998,
+    "buy": 21,
+    "sell": 32,
+    "profit": 0.8399999999999999,
+    "roi": 3.1111111111111107,
+    "startCapital": 27,
+    "endCapital": 27.84,
     "ignored": false
   },
   {
-    "buy": 234,
-    "sell": 345,
-    "profit": 63.809999999999974,
+    "buy": 21,
+    "sell": 31,
+    "profit": -0.030000000000001137,
+    "roi": -0.11111111111111532,
+    "startCapital": 27,
+    "endCapital": 26.97,
     "ignored": false
   },
   {
-    "buy": 234,
-    "sell": 345,
-    "profit": 54.44999999999996,
+    "buy": 21,
+    "sell": 32,
+    "profit": 0.8399999999999999,
+    "roi": 3.1111111111111107,
+    "startCapital": 27,
+    "endCapital": 27.84,
     "ignored": false
   },
   {
-    "buy": 24,
-    "sell": 33,
-    "profit": 4.23,
-    "ignored": false
-  },
-  {
-    "buy": 24,
-    "sell": 33,
-    "profit": 4.23,
-    "ignored": false
-  },
-  {
-    "buy": 26,
-    "sell": 33,
-    "profit": 2.1900000000000013,
-    "ignored": false
-  },
-  {
-    "buy": 24,
-    "sell": 33,
-    "profit": 4.23,
-    "ignored": false
-  },
-  {
-    "buy": 22,
-    "sell": 33,
-    "profit": 6.27,
-    "ignored": false
-  },
-  {
-    "buy": 22,
-    "sell": 33,
-    "profit": 6.27,
-    "ignored": false
-  },
-  {
-    "buy": 22,
-    "sell": 33,
-    "profit": 6.27,
+    "buy": 21,
+    "sell": 34,
+    "profit": 1.7399999999999984,
+    "roi": 6.249999999999995,
+    "startCapital": 27.84,
+    "endCapital": 29.58,
     "ignored": false
   },
   {
     "buy": 23,
-    "sell": 33,
-    "profit": 5.25,
-    "ignored": false
-  },
-  {
-    "buy": 25,
-    "sell": 33,
-    "profit": 3.210000000000001,
-    "ignored": false
-  },
-  {
-    "buy": 25,
-    "sell": 35,
-    "profit": 4.949999999999999,
-    "ignored": false
-  },
-  {
-    "buy": 25,
-    "sell": 35,
-    "profit": 4.949999999999999,
-    "ignored": false
-  },
-  {
-    "buy": 25,
-    "sell": 35,
-    "profit": 4.949999999999999,
-    "ignored": false
-  },
-  {
-    "buy": 25,
-    "sell": 35,
-    "profit": 4.949999999999999,
-    "ignored": false
-  },
-  {
-    "buy": 0,
-    "sell": 35,
-    "profit": 30.45,
-    "ignored": false
-  },
-  {
-    "buy": 0,
-    "sell": 35,
-    "profit": 30.45,
-    "ignored": false
-  },
-  {
-    "buy": 0,
-    "sell": 35,
-    "profit": 30.45,
+    "sell": 36,
+    "profit": 1.740000000000002,
+    "roi": 5.882352941176477,
+    "startCapital": 29.58,
+    "endCapital": 31.32,
     "ignored": false
   }
 ]
