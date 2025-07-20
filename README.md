@@ -63,10 +63,20 @@ Backend:
 cd App/end
 python server.py
 ```
+or
+```
+py server.py
+```
+
 Frontend:
 ```
 cd App/front
 python -m http.server 8000
+```
+or
+
+```
+py -m http.server 8000
 ```
 Then open in browser:
 
