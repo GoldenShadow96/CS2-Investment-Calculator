@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Symulator Inwestycji CSGO</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2rem;
+      background: #f2f2f2;
+    }
+    .container {
+      max-width: 700px;
+      margin: auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+    }
+    input {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.3rem;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 0.75rem 1.5rem;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .result, .break-even {
+      margin-top: 1rem;
+      font-weight: bold;
+    }
+    ul {
+      margin-top: 1rem;
+      padding: 0;
+      list-style-type: none;
+    }
+    li {
+      margin-bottom: 0.5rem;
+      padding: 0.5rem;
+      background-color: #f9f9f9;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .ignore-button, .delete-button {
+      margin-left: 10px;
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      padding: 0.3rem 0.5rem;
+      cursor: pointer;
+      border-radius: 3px;
+    }
+    .ignore-button {
+      background-color: #ffc107;
+      color: black;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Symulator Inwestycji CSGO</h1>
+
+    <label for="steamRevenue">Przychód ze sprzedaży na Steam (zł):</label>
+    <input type="number" id="steamRevenue" placeholder="np. 27.40" step="0.01">
+
+    <label for="targetSellPrice">Docelowa cena sprzedaży skinu na Steam (brutto):</label>
+    <input type="number" id="targetSellPrice" placeholder="np. 31.48" step="0.01">
+
+    <label for="dmarketBuyPrice">Cena zakupu na DMarket (zł):</label>
+    <input type="number" id="dmarketBuyPrice" placeholder="np. 27.40" step="0.01">
+
+    <label for="dmarketFee">Prowizja DMarket (%):</label>
+    <input type="number" id="dmarketFee" placeholder="np. 5" step="0.1">
+
+    <button onclick="simulateInvestment()">Symuluj</button>
+
+    <div class="result" id="result"></div>
+    <div class="break-even" id="breakEven"></div>
+    <div>
+      <h3>Historia transakcji:</h3>
+      <ul id="historyList"></ul>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:5000';
+    const historyList = document.getElementById('historyList');
+
+    async function loadTransactions() {
+      const res = await fetch(`${API_BASE}/transactions`);
+      const data = await res.json();
+      renderHistory(data);
+    }
+
+    async function simulateInvestment() {
+      const steamRevenue = parseFloat(document.getElementById('steamRevenue').value);
+      const targetSellPrice = parseFloat(document.getElementById('targetSellPrice').value);
+      const dmarketBuyPrice = parseFloat(document.getElementById('dmarketBuyPrice').value);
+      const dmarketFee = parseFloat(document.getElementById('dmarketFee').value);
+
+      if (isNaN(steamRevenue) || isNaN(targetSellPrice) || isNaN(dmarketBuyPrice) || isNaN(dmarketFee)) {
+        document.getElementById('result').textContent = 'Uzupełnij wszystkie pola poprawnie.';
+        return;
+      }
+
+      const steamNet = targetSellPrice * 0.87;
+      const dmarketNet = dmarketBuyPrice * (1 + dmarketFee / 100);
+      const finalProfit = steamNet - dmarketNet;
+      const breakEvenPrice = dmarketNet / 0.87;
+
+      document.getElementById('result').textContent = `Zysk netto po prowizjach: ${finalProfit.toFixed(2)} zł`;
+      document.getElementById('breakEven').textContent = `Cena sprzedaży potrzebna na Steam do wyjścia na zero: ${breakEvenPrice.toFixed(2)} zł`;
+
+      const transaction = {
+        buy: dmarketBuyPrice,
+        sell: targetSellPrice,
+        profit: finalProfit,
+        ignored: false
+      };
+
+      await fetch(`${API_BASE}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(transaction)
+      });
+
+      loadTransactions();
+    }
+
+    async function deleteTransaction(index) {
+      await fetch(`${API_BASE}/transactions/${index}`, { method: 'DELETE' });
+      loadTransactions();
+    }
+
+    async function toggleIgnore(index, currentStatus) {
+      await fetch(`${API_BASE}/transactions/${index}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ignored: !currentStatus })
+      });
+      loadTransactions();
+    }
+
+    function renderHistory(transactions) {
+      historyList.innerHTML = '';
+      transactions.forEach((tx, index) => {
+        const li = document.createElement('li');
+        li.textContent = `Kupno: ${tx.buy.toFixed(2)} zł, Sprzedaż: ${tx.sell.toFixed(2)} zł, Zysk: ${tx.profit.toFixed(2)} zł ${tx.ignored ? '(Zignorowany)' : ''}`;
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Usuń';
+        deleteBtn.className = 'delete-button';
+        deleteBtn.onclick = () => deleteTransaction(index);
+
+        const ignoreBtn = document.createElement('button');
+        ignoreBtn.textContent = tx.ignored ? 'Przywróć' : 'Zignoruj';
+        ignoreBtn.className = 'ignore-button';
+        ignoreBtn.onclick = () => toggleIgnore(index, tx.ignored);
+
+        li.appendChild(ignoreBtn);
+        li.appendChild(deleteBtn);
+        historyList.appendChild(li);
+      });
+    }
+
+    loadTransactions();
+  </script>
+</body>
+</html>
