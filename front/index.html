@@ -36,7 +36,7 @@
       border-radius: 5px;
       cursor: pointer;
     }
-    .result, .break-even {
+    .result, .break-even, .cycle-status {
       margin-top: 1rem;
       font-weight: bold;
     }
@@ -87,6 +87,7 @@
 
     <div class="result" id="result"></div>
     <div class="break-even" id="breakEven"></div>
+    <div class="cycle-status" id="cycleStatus"></div>
     <div>
       <h3>Historia transakcji:</h3>
       <ul id="historyList"></ul>
@@ -116,11 +117,18 @@
 
       const steamNet = targetSellPrice * 0.87;
       const dmarketNet = dmarketBuyPrice * (1 + dmarketFee / 100);
-      const finalProfit = steamNet - dmarketNet;
-      const breakEvenPrice = dmarketNet / 0.87;
+      const finalProfit = steamNet - steamRevenue;
+      const breakEvenPrice = steamRevenue / 0.87;
+      const requiredGrowth = steamRevenue * (1 + 0.15);
+      const requiredTargetSell = requiredGrowth / 0.87;
 
-      document.getElementById('result').textContent = `Zysk netto po prowizjach: ${finalProfit.toFixed(2)} zł`;
-      document.getElementById('breakEven').textContent = `Cena sprzedaży potrzebna na Steam do wyjścia na zero: ${breakEvenPrice.toFixed(2)} zł`;
+      document.getElementById('result').textContent = `Zysk netto w pętli inwestycyjnej: ${finalProfit.toFixed(2)} zł`;
+      document.getElementById('breakEven').textContent = `Minimalna cena sprzedaży na Steam do wyjścia na zero: ${breakEvenPrice.toFixed(2)} zł`;
+
+      const cycleOk = targetSellPrice >= requiredTargetSell;
+      document.getElementById('cycleStatus').textContent = cycleOk
+        ? `✅ Cel osiągnięty: target >= ${requiredTargetSell.toFixed(2)} zł (15% wzrost)`
+        : `❌ Cel NIEosiągnięty: wymagane minimum to ${requiredTargetSell.toFixed(2)} zł (15% wzrost)`;
 
       const transaction = {
         buy: dmarketBuyPrice,
