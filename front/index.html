@@ -1,161 +1,229 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Symulator Inwestycji CS2</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Steam ⇄ DMarket Cycle Calculator</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 2rem; background: #f2f2f2; }
-    .container { max-width: 700px; margin: auto; background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    label { display: block; margin-top: 1rem; }
-    input { width: 100%; padding: 0.5rem; margin-top: 0.3rem; }
-    button { margin-top: 1rem; padding: 0.75rem 1.5rem; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
-    .result, .break-even, .cycle-status, .roi { margin-top: 1rem; font-weight: bold; }
-    ul { margin-top: 1rem; padding: 0; list-style-type: none; }
-    li { margin-bottom: 0.5rem; padding: 0.5rem; background-color: #f9f9f9; border: 1px solid #ddd; border-radius: 5px; }
-    .ignore-button, .delete-button { margin-left: 10px; background-color: #dc3545; color: white; border: none; padding: 0.3rem 0.5rem; cursor: pointer; border-radius: 3px; }
-    .ignore-button { background-color: #ffc107; color: black; }
-    .positive { color: #0a802a; }
-    .negative { color: #b30000; }
+    body { font-family: Arial, Helvetica, sans-serif; background: #f4f4f4; padding: 2rem }
+    .container { max-width: 760px; margin: auto; background: #fff; padding: 2rem; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,.08) }
+    label { display: block; margin-top: 1rem; font-weight: 600 }
+    input { width: 100%; padding: .5rem; margin-top: .25rem; border: 1px solid #ccc; border-radius: 4px }
+    button { margin-top: 1rem; padding: .6rem 1.4rem; border: none; border-radius: 5px; background: #0e6efd; color: #fff; font-weight: 600; cursor: pointer }
+    button:hover { opacity: .9 }
+    .metric { margin-top: .8rem; font-weight: 700 }
+    .pos { color: #218739 } .neg { color: #c41111 }
+    ul { list-style: none; padding: 0; margin-top: 1rem }
+    li { padding: .6rem; border: 1px solid #ddd; border-radius: 5px; margin-bottom: .5rem; background: #fafafa; font-size: .9rem }
+    .btn { margin-left: 8px; padding: .25rem .5rem; border: none; border-radius: 3px; cursor: pointer }
+    .del { background: #c41111; color: #fff } .ign { background: #e2b400; color: #000 }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div class="container">
-    <h1>Symulator Inwestycji CSGO</h1>
+<div class="container">
+  <h2>Steam ⇄ DMarket Cycle Calculator</h2>
 
-    <label for="steamRevenue">Kapitał wejściowy z poprzedniej sprzedaży na Steam (zł netto):</label>
-    <input type="number" id="steamRevenue" placeholder="np. 27.00" step="0.01">
+  <label for="psin">Cena zakupu na Steam – P<sub>s,in</sub> [zł]</label>
+  <input type="number" id="psin" step="0.01" placeholder="np. 100.00">
 
-    <label for="targetSellPrice">Planowana (lub osiągnięta) cena sprzedaży nowego skinu na Steam (brutto):</label>
-    <input type="number" id="targetSellPrice" placeholder="np. 32.20" step="0.01">
+  <label for="pd">Cena sprzedaży na DMarket – P<sub>d</sub> [zł]</label>
+  <input type="number" id="pd" step="0.01" placeholder="np. 97.00">
 
-    <label for="dmarketBuyPrice">Cena zakupu na DMarket (zł):</label>
-    <input type="number" id="dmarketBuyPrice" placeholder="np. 27.00" step="0.01">
+  <label for="ps">Cena sprzedaży na Steam – P<sub>s</sub> [zł]</label>
+  <input type="number" id="ps" step="0.01" placeholder="np. 126.00">
 
-    <label for="dmarketFee">Prowizja DMarket (%):</label>
-    <input type="number" id="dmarketFee" placeholder="np. 5" step="0.1">
+  <button onclick="calc()">Oblicz cykl</button>
 
-    <button onclick="simulateInvestment()">Symuluj cykl</button>
+  <div id="metrics"></div>
 
-    <div class="break-even" id="breakEven"></div>
-    <div class="result" id="result"></div>
-    <div class="roi" id="roi"></div>
-    <div class="cycle-status" id="cycleStatus"></div>
+  <h3>Historia</h3>
+  <ul id="history"></ul>
 
-    <div>
-      <h3>Historia cykli:</h3>
-      <ul id="historyList"></ul>
-    </div>
-  </div>
+  <h3>Wykres danych transakcji</h3>
+  <canvas id="chart" height="160"></canvas>
+</div>
 
-  <script>
-    const API_BASE = 'http://localhost:5000';
-    const historyList = document.getElementById('historyList');
+<script>
+const API = 'http://localhost:5000';
 
-    async function loadTransactions() {
-      try {
-        const res = await fetch(`${API_BASE}/transactions`);
-        const data = await res.json();
-        renderHistory(data);
-      } catch (e) {
-        console.error('Błąd pobierania transakcji', e);
+const metrics = document.getElementById('metrics');
+const history = document.getElementById('history');
+
+function fmt(n){ return Number(n).toFixed(2); }
+
+async function load(){
+  try {
+    const r = await fetch(`${API}/transactions`);
+    const data = await r.json();
+    renderHistory(data);
+  } catch (e) {
+    history.innerHTML = '<li>Backend not available…</li>';
+  }
+}
+
+function renderHistory(arr){
+  history.innerHTML = '';
+  arr.forEach((tx,i)=>{
+    const li = document.createElement('li');
+    li.innerHTML =
+      `Zysk: <strong class="${tx.profit > 0 ? 'pos' : 'neg'}">${fmt(tx.profit)} zł</strong> | ROI: ${fmt(tx.roi)} %` +
+      ` | P<sub>s,in</sub>: ${fmt(tx.Psin)} | P<sub>s</sub>: ${fmt(tx.Ps)} | P<sub>d</sub>: ${fmt(tx.Pd)}` +
+      (tx.ignored ? ' (ignored)' : '');
+    const del = document.createElement('button');
+    del.textContent = 'del'; del.className = 'btn del';
+    del.onclick = () => update(i, 'DELETE');
+    const ign = document.createElement('button');
+    ign.textContent = tx.ignored ? 'unignore' : 'ignore'; ign.className = 'btn ign';
+    ign.onclick = () => update(i, 'TOGGLE');
+    li.appendChild(ign); li.appendChild(del);
+    history.appendChild(li);
+  });
+  renderContextualChart(arr);
+}
+
+async function update(idx, act){
+  if (act === 'DELETE')
+    await fetch(`${API}/transactions/${idx}`, { method: 'DELETE' });
+  else
+    await fetch(`${API}/transactions/${idx}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ignored: false })
+    });
+  load();
+}
+
+async function calc() {
+  const Ps = parseFloat(document.getElementById('ps').value);
+  const Pd = parseFloat(document.getElementById('pd').value);
+  const Psin = parseFloat(document.getElementById('psin').value);
+
+  if ([Ps, Pd, Psin].some(isNaN)) {
+    metrics.textContent = 'Uzupełnij wszystkie pola.';
+    return;
+  }
+
+  const Ld = Pd / Psin;
+  const profit = Ps * 0.87 - (Pd / Ld);
+  const roi = (profit / (Pd / Ld)) * 100;
+  const pMin = Pd / 0.87;
+
+  metrics.innerHTML =
+    `<div class="metric">Zysk: <span class="${profit >= 0 ? 'pos' : 'neg'}">${fmt(profit)} zł</span> &nbsp;|&nbsp; ROI: ${fmt(roi)} %</div>` +
+    `<div class="metric">Minimalne P<sub>s</sub> dla break-even: ${fmt(pMin)} zł</div>`;
+
+  const tx = { Ps, Pd, Psin, Ld, profit, roi, ignored: false };
+
+  try {
+    await fetch(`${API}/transactions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tx)
+    });
+    load();
+  } catch (e) {}
+}
+
+function renderContextualChart(data) {
+  const filtered = data.filter(tx => !tx.ignored);
+  const labels = filtered.map((_, i) => `#${i + 1}`);
+  const PSin = filtered.map(tx => -tx.Psin);
+  const Pd = filtered.map(tx => -tx.Pd);
+  const PsNet = filtered.map(tx => 0.87 * tx.Ps);
+  const profit = filtered.map(tx => tx.profit);
+  const roi = filtered.map(tx => tx.roi);
+
+  const ctx = document.getElementById("chart").getContext("2d");
+  if (window.myChart) window.myChart.destroy();
+
+  window.myChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Zakup Steam (P_s,in)",
+          data: PSin,
+          backgroundColor: "#c41111",
+          yAxisID: "y",
+          stack: 'stack1',
+          barPercentage: 0.1,
+          categoryPercentage: 1.0,
+          order: 3,
+        },
+        {
+          label: "Sprzedaż DMarket (P_d)",
+          data: Pd,
+          backgroundColor: "#888888",
+          yAxisID: "y",
+          stack: 'stack1',
+          barPercentage: 0.1,
+          categoryPercentage: 1.0,
+          order: 2,
+        },
+        {
+          label: "Sprzedaż Steam netto (0.87 × P_s)",
+          data: PsNet,
+          backgroundColor: "#218739",
+          yAxisID: "y",
+          stack: 'stack1',
+          order: 1,
+          barPercentage: 0.1,
+          categoryPercentage: 1.0,
+        },
+        {
+          type: "line",
+          label: "Zysk",
+          data: profit.map((p, i) => ({ x: labels[i], y: p })),
+          backgroundColor: "#e2b400",
+          borderColor: "#e2b400",
+          pointStyle: "circle",
+          pointRadius: 5,
+          yAxisID: "y",
+          order: 0,
+          showLine: false
+        },
+        {
+          type: "scatter",
+          label: "ROI (%)",
+          data: roi,
+          borderColor: "#555",
+          backgroundColor: "#555",
+          order: 0,
+          yAxisID: "y1"
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: "top" },
+        tooltip: { mode: "index", intersect: false }
+      },
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        y: {
+          beginAtZero: true,
+          stacked: false,
+          title: { display: true, text: "Kwota (zł)" }
+        },
+        y1: {
+          beginAtZero: true,
+          position: "right",
+          title: { display: true, text: "ROI (%)" },
+          grid: { drawOnChartArea: false }
+        },
+        x: {
+          stacked: true
+        }
       }
     }
+  });
+}
 
-    function format(num) { return Number(num).toFixed(2); }
 
-    async function simulateInvestment() {
-      const steamRevenue = parseFloat(document.getElementById('steamRevenue').value); // kapitał początkowy (netto)
-      const targetSellPrice = parseFloat(document.getElementById('targetSellPrice').value); // cena brutto końcowa
-      const dmarketBuyPrice = parseFloat(document.getElementById('dmarketBuyPrice').value);
-      const dmarketFee = parseFloat(document.getElementById('dmarketFee').value);
-
-      if ([steamRevenue, targetSellPrice, dmarketBuyPrice, dmarketFee].some(v => isNaN(v))) {
-        document.getElementById('result').textContent = 'Uzupełnij wszystkie pola poprawnie.';
-        return;
-      }
-
-      // Netto ze sprzedaży Steam (po 13% prowizji)
-      const steamNet = targetSellPrice * 0.87;
-
-      // Koszt zakupu na DMarket (brutto + prowizja DMarket) - informacyjnie
-      const dmarketNet = dmarketBuyPrice * (1 + dmarketFee / 100);
-
-      // Zysk cyklu: ile mam po sprzedaży (steamNet) vs kapitał wejściowy (steamRevenue)
-      const cycleProfit = steamNet - steamRevenue;
-      const roi = (cycleProfit / steamRevenue) * 100; // procentowy zwrot cyklu
-
-      // Break-even: cena brutto na Steam potrzebna aby wyjść na zero względem kapitału początkowego
-      const breakEvenPrice = steamRevenue / 0.87;
-
-      document.getElementById('breakEven').textContent = `Cena brutto Steam potrzebna do wyjścia na zero: ${format(breakEvenPrice)} zł`;
-      document.getElementById('result').textContent = `Zysk netto cyklu: ${format(cycleProfit)} zł (kapitał końcowy: ${format(steamNet)} zł)`;
-      document.getElementById('roi').textContent = `ROI cyklu: ${format(roi)}%`;
-
-      document.getElementById('cycleStatus').innerHTML = cycleProfit > 0
-        ? `<span class="positive">Cykl dodatni ✔︎</span>`
-        : (cycleProfit === 0 ? 'Cykl na zero' : `<span class="negative">Cykl ujemny ✘</span>`);
-
-      const transaction = {
-        buy: dmarketBuyPrice,
-        sell: targetSellPrice,
-        profit: cycleProfit,
-        roi: roi,
-        startCapital: steamRevenue,
-        endCapital: steamNet,
-        ignored: false
-      };
-
-      try {
-        await fetch(`${API_BASE}/transactions`, {
-          method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(transaction)
-        });
-        loadTransactions();
-      } catch (e) {
-        console.error('Błąd zapisu transakcji', e);
-      }
-    }
-
-    async function deleteTransaction(index) {
-      await fetch(`${API_BASE}/transactions/${index}`, { method: 'DELETE' });
-      loadTransactions();
-    }
-
-    async function toggleIgnore(index, currentStatus) {
-      await fetch(`${API_BASE}/transactions/${index}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ignored: !currentStatus })
-      });
-      loadTransactions();
-    }
-
-    function renderHistory(transactions) {
-      historyList.innerHTML = '';
-      transactions.forEach((tx, index) => {
-        const li = document.createElement('li');
-        const status = tx.profit > 0 ? '✔︎' : (tx.profit === 0 ? '=' : '✘');
-        li.innerHTML = `Start: ${format(tx.startCapital)} zł → Koniec: ${format(tx.endCapital)} zł | Zysk: ${format(tx.profit)} zł | ROI: ${format(tx.roi)}% ${status} ${tx.ignored ? '(Zignorowany)' : ''}`;
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = 'Usuń';
-        deleteBtn.className = 'delete-button';
-        deleteBtn.onclick = () => deleteTransaction(index);
-
-        const ignoreBtn = document.createElement('button');
-        ignoreBtn.textContent = tx.ignored ? 'Przywróć' : 'Zignoruj';
-        ignoreBtn.className = 'ignore-button';
-        ignoreBtn.onclick = () => toggleIgnore(index, tx.ignored);
-
-        li.appendChild(ignoreBtn);
-        li.appendChild(deleteBtn);
-        historyList.appendChild(li);
-      });
-    }
-
-    loadTransactions();
-  </script>
+load();
+</script>
 </body>
 </html>
