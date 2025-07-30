@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Steam ⇄ DMarket Cycle Calculator</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; background: #f4f4f4; padding: 2rem }
+    .container { max-width: 1000px; margin: auto; background: #fff; padding: 2rem; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,.08) }
+    label { display: block; margin-top: 1rem; font-weight: 600 }
+    input, textarea { width: 100%; padding: .5rem; margin-top: .25rem; border: 1px solid #ccc; border-radius: 4px; font-family: inherit }
+    button { margin-top: 1rem; padding: .6rem 1.4rem; border: none; border-radius: 5px; background: #0e6efd; color: #fff; font-weight: 600; cursor: pointer }
+    button:hover { opacity: .9 }
+    .metric { margin-top: .8rem; font-weight: 700 }
+    .pos { color: #218739 } .neg { color: #c41111 }
+    ul { list-style: none; padding: 0; margin-top: 1rem }
+    li { padding: .6rem; border: 1px solid #ddd; border-radius: 5px; margin-bottom: .5rem; background: #fafafa; font-size: .9rem }
+    .btn { margin-left: 8px; padding: .25rem .5rem; border: none; border-radius: 3px; cursor: pointer }
+    .del { background: #c41111; color: #fff } .ign { background: #e2b400; color: #000 }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: .85rem }
+    th, td { border: 1px solid #ddd; padding: .4rem; text-align: center }
+    th { background: #f0f0f0 }
+    .scroll-x { overflow-x: auto }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@4.3.3/dist/chartjs-plugin-zoom.umd.min.js"></script>
+</head>
+<body>
+<!-- ========================================================= -->
+<!--                      BLOK 1 – TRANSAKCJE                  -->
+<!-- ========================================================= -->
+<div class="container">
+  <h2>Steam ⇄ DMarket Cycle Calculator</h2>
+
+  <label for="psin">Cena zakupu na Steam – P<sub>s,in</sub> [zł]</label>
+  <input type="number" id="psin" step="0.01" placeholder="np. 100.00">
+
+  <label for="pd">Cena sprzedaży na DMarket – P<sub>d</sub> [zł]</label>
+  <input type="number" id="pd" step="0.01" placeholder="np. 97.00">
+
+  <label for="ps">Cena sprzedaży na Steam – P<sub>s</sub> [zł]</label>
+  <input type="number" id="ps" step="0.01" placeholder="np. 126.00">
+
+  <button onclick="calc()">Oblicz cykl</button>
+
+  <div id="metrics"></div>
+
+  <h3>Historia</h3>
+  <ul id="history"></ul>
+
+  <h3>Wykres danych transakcji</h3>
+  <canvas id="chart" height="160"></canvas>
+</div>
+
+<!-- ========================================================= -->
+<!--                      BLOK 2 – IMPORT DANYCH               -->
+<!-- ========================================================= -->
+<br>
+<div class="container">
+  <hr style="margin-top:2rem">
+  <label for="itemName">Przedmiot (dokładna nazwa z rynku Steam, z jakością):</label>
+  <input type="text" id="itemName" placeholder="np. AWP | Pit Viper (Minimal Wear)">
+  <button onclick="openPriceHistory()">Otwórz pricehistory</button>
+
+  <hr style="margin-top:2rem">
+  <h3>Wklej dane z pricehistory</h3>
+  <textarea id="jsonInput" rows="10" placeholder="Wklej tutaj dane JSON z pricehistory"></textarea>
+  <button onclick="submitHistory()">Zapisz dane do markethistory.json</button>
+  <div id="saveStatus" style="margin-top:0.5rem; font-weight:600;"></div>
+
+  <hr style="margin-top:2rem">
+  <h3>Analiza lokalna (markethistory.json)</h3>
+  <label for="sinceDays">Analizuj z ostatnich dni:</label>
+  <input type="number" id="sinceDays" value="90" min="1" step="1">
+  <button onclick="analyzeLocal()">Analizuj plik lokalny</button>
+</div>
+
+<!-- ========================================================= -->
+<!--                      BLOK 3 – WYKRES CEN                  -->
+<!-- ========================================================= -->
+<br>
+<div class="container">
+  <h3>Wykres historii ceny przedmiotu</h3>
+  <canvas id="chartPrice" height="160"></canvas>
+
+  <div id="analysisResult" class="metric" style="margin-top: 1rem;"></div>
+</div>
+
+<!-- ========================================================= -->
+<!--                      SKRYPTY                             -->
+<!-- ========================================================= -->
+<script>
+const API = 'http://localhost:5000';
+const metrics   = document.getElementById('metrics');
+const historyUl = document.getElementById('history');
+
+function fmt(n, p=2){ return Number(n).toFixed(p); }
+
+/* ----------------- TRANSAKCJE CRUD + WYKRES ---------------- */
+async function load(){
+  try{
+    const r = await fetch(`${API}/transactions`);
+    renderHistory(await r.json());
+  }catch(e){
+    historyUl.innerHTML = '<li>Backend not available…</li>';
+  }
+}
+function renderHistory(arr){
+  historyUl.innerHTML = '';
+  arr.forEach((tx,i)=>{
+    const li=document.createElement('li');
+    li.innerHTML=
+      `Zysk: <strong class="${tx.profit>0?'pos':'neg'}">${fmt(tx.profit)}</strong> zł | ROI: ${fmt(tx.roi)} %`+
+      ` | P<sub>s,in</sub>: ${fmt(tx.Psin)} | P<sub>s</sub>: ${fmt(tx.Ps)} | P<sub>d</sub>: ${fmt(tx.Pd)}`+
+      (tx.ignored?' (ignored)':'');
+    const del=document.createElement('button');
+    del.textContent='del';del.className='btn del';del.onclick=()=>update(i,'DELETE');
+    const ign=document.createElement('button');
+    ign.textContent=tx.ignored?'unignore':'ignore';ign.className='btn ign';
+    ign.onclick=()=>update(i,'TOGGLE');
+    li.append(ign,del); historyUl.appendChild(li);
+  });
+  renderContextualChart(arr);
+}
+async function update(idx,act){
+  if(act==='DELETE')
+    await fetch(`${API}/transactions/${idx}`,{method:'DELETE'});
+  else
+    await fetch(`${API}/transactions/${idx}`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ignored:false})
+    });
+  load();
+}
+async function calc(){
+  const Ps=parseFloat(ps.value), Pd=parseFloat(pd.value), Psin=parseFloat(psin.value);
+  if([Ps,Pd,Psin].some(isNaN)){ metrics.textContent='Uzupełnij wszystkie pola.'; return; }
+  const Ld=Pd/Psin, profit=Ps*0.87-(Pd/Ld), roi=profit/(Pd/Ld)*100, pMin=Pd/0.87;
+  metrics.innerHTML=
+    `<div class="metric">Zysk: <span class="${profit>=0?'pos':'neg'}">${fmt(profit)}</span> zł | ROI: ${fmt(roi)} %</div>`+
+    `<div class="metric">Minimalne P<sub>s</sub> dla break-even: ${fmt(pMin)} zł</div>`;
+  await fetch(`${API}/transactions`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({Ps,Pd,Psin,Ld,profit,roi,ignored:false})
+  });
+  load();
+}
+function renderContextualChart(data){
+  const f=data.filter(tx=>!tx.ignored), labels=f.map((_,i)=>`#${i+1}`);
+  const PSin=f.map(tx=>-tx.Psin), Pd=f.map(tx=>-tx.Pd), PsNet=f.map(tx=>0.87*tx.Ps),
+        profit=f.map(tx=>tx.profit), roi=f.map(tx=>tx.roi);
+  const ctx=document.getElementById("chart").getContext("2d");
+  if(window.myChart) window.myChart.destroy();
+  window.myChart=new Chart(ctx,{
+    type:'bar',
+    data:{labels,
+      datasets:[
+        {label:"Zakup Steam (P_s,in)",data:PSin,backgroundColor:"#c41111",yAxisID:"y",stack:'s',barPercentage:0.1},
+        {label:"Sprzedaż DMarket (P_d)",data:Pd,backgroundColor:"#888",yAxisID:"y",stack:'s',barPercentage:0.1},
+        {label:"Sprzedaż Steam netto (0.87×P_s)",data:PsNet,backgroundColor:"#218739",yAxisID:"y",stack:'s',barPercentage:0.1},
+        {type:"line",label:"Zysk",data:profit.map((p,i)=>({x:labels[i],y:p})),borderColor:"#e2b400",backgroundColor:"#e2b400",yAxisID:"y",showLine:false},
+        {type:"scatter",label:"ROI (%)",data:roi,borderColor:"#555",backgroundColor:"#555",yAxisID:"y1"}
+      ]},
+    options:{responsive:true,interaction:{mode:"index",intersect:false},
+      plugins:{legend:{position:"top"},tooltip:{mode:"index",intersect:false},
+        zoom:{pan:{enabled:true,mode:'xy',modifierKey:'ctrl'},
+              zoom:{wheel:{enabled:true,modifierKey:'shift'},
+                    drag:{enabled:true,backgroundColor:'rgba(40,110,253,.15)'},mode:'xy'}}},
+      scales:{y:{beginAtZero:true,title:{display:true,text:"Kwota (zł)"}},
+              y1:{beginAtZero:true,position:"right",title:{display:true,text:"ROI (%)"},grid:{drawOnChartArea:false}},
+              x:{stacked:true}}}});
+}
+
+/* ----------------- ANALIZA LOKALNA ---------------- */
+async function analyzeLocal(){
+  const sinceDays=document.getElementById("sinceDays").value||730;
+  const resDiv=document.getElementById("analysisResult");
+  resDiv.textContent="Ładowanie analizy…";
+  try{
+    const r=await fetch(`${API}/analyze-local?since_days=${sinceDays}`);
+    const d=await r.json();
+    if(!r.ok){ resDiv.textContent=`Błąd: ${d.error}`; return; }
+
+    // ------- wyświetlanie ---------------------------------------------
+    const { current_price_raw, current_price_smoothed,
+            current_state, centroids, delta_boundaries,
+            price_boundaries, markov_chain,
+            transition_counts, transition_totals } = d;
+
+    /*  CENTROIDY Δ  */
+    const centroidLabels=['S2','S1','F','W1','W2'];
+    const centList=`<ul>${centroids.map((c,i)=>`<li>Centroid ${centroidLabels[i]}: ${fmt(c,4)}</li>`).join('')}</ul>`;
+
+    /*  GRANICE Δ  */
+    const deltaNames=['S2 (min)', 'S2/S1', 'S1/F', 'F/W1', 'W1/W2', 'W2 (max)'];
+    const deltaList=`<ul>${delta_boundaries.map((b,i)=>`<li>${deltaNames[i]}: ${fmt(b,4)}</li>`).join('')}</ul>`;
+
+    /*  GRANICE CENY  */
+    const priceList=`<ul>${
+      price_boundaries.map((b,i)=>
+        `<li>${i===0?'min':i===5?'max':i*20+'%'}: ${fmt(b,4)}</li>`).join('')
+    }</ul>`;
+
+    /*  MACIERZ MARKOWA – top 10 przejść żeby nie zalać UI */
+    const transitionsFlat=Object.entries(markov_chain).flatMap(
+      ([from,toObj])=>Object.entries(toObj).map(([to,val])=>({from,to,val}))
+    ).filter(o=>o.val>0).sort((a,b)=>b.val-a.val).slice(0,15);
+    const markovTable=`
+      <div class="scroll-x"><table>
+        <thead><tr><th>z</th><th>do</th><th>P</th><th>n</th></tr></thead>
+        <tbody>${transitionsFlat.map(o=>`
+          <tr><td>${o.from}</td><td>${o.to}</td><td>${o.val}</td>
+              <td>${transition_counts[`${o.from}→${o.to}`]||0}</td></tr>`).join('')}
+        </tbody>
+      </table></div>`;
+
+    resDiv.innerHTML=`
+      <p>📌 <strong>Aktualna cena (raw):</strong> ${fmt(current_price_raw,4)} zł
+         &nbsp;|&nbsp; <strong>SMA-3:</strong> ${fmt(current_price_smoothed,4)} zł</p>
+      <p>🎯 <strong>Bieżący stan:</strong> ${current_state}</p>
+      <details open><summary><strong>Centroidy Δ</strong></summary>${centList}</details>
+      <details><summary><strong>Granice Δ</strong></summary>${deltaList}</details>
+      <details><summary><strong>Granice ceny (kwantyle)</strong></summary>${priceList}</details>
+      <details open><summary><strong>Łańcuch Markowa – top przejścia</strong></summary>${markovTable}</details>
+    `;
+  }catch(e){
+    resDiv.textContent="Nie udało się pobrać danych analizy.";
+    console.error(e);
+  }
+  loadPriceChart(sinceDays);
+}
+
+/* ----------------- IMPORT PRICEHISTORY + WYKRES CEN ---------------- */
+function openPriceHistory(){
+  const name=itemName.value.trim();
+  if(!name){ alert("Wprowadź nazwę przedmiotu."); return; }
+  const enc=encodeURIComponent(name).replace(/%20/g,'%20').replace(/%7C/g,'%7C')
+                                    .replace(/%28/g,'%28').replace(/%29/g,'%29');
+  window.open(`https://steamcommunity.com/market/pricehistory/?country=PL&currency=6&appid=730&market_hash_name=${enc}`,'_blank');
+}
+async function submitHistory(){
+  const raw=jsonInput.value, status=saveStatus;
+  try{
+    const j=JSON.parse(raw);
+    const r=await fetch(`${API}/update-history`,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(j)});
+    if(r.ok){ status.textContent="✅ Dane zostały zapisane!"; status.style.color="#218739";}
+    else{ const e=await r.json(); status.textContent="❌ Błąd: "+(e.error||"Nie udało się"); status.style.color="#c41111";}
+  }catch(e){ status.textContent="❌ Niepoprawny JSON."; status.style.color="#c41111";}
+}
+async function loadPriceChart(days=90){
+  try{
+    const r=await fetch(`${API}/price-chart?since_days=${days}`), d=await r.json();
+    if(!d.labels||!d.prices){console.warn("Brak danych cenowych");return;}
+    const ctx=document.getElementById("chartPrice").getContext("2d");
+    if(window.chartPrice instanceof Chart) window.chartPrice.destroy();
+    window.chartPrice=new Chart(ctx,{
+      type:'line',
+      data:{labels:d.labels,datasets:[{label:"Cena Steam (zł)",data:d.prices,
+        borderColor:"#0e6efd",backgroundColor:"rgba(14,110,253,.15)",fill:true,tension:.2,pointRadius:2}]},
+      options:{responsive:true,plugins:{legend:{display:true},
+        zoom:{pan:{enabled:true,mode:'xy',modifierKey:'ctrl'},
+              zoom:{wheel:{enabled:true,modifierKey:'shift'},
+                    drag:{enabled:true,backgroundColor:'rgba(40,110,253,.15)'},mode:'xy'}}},
+        scales:{y:{beginAtZero:false,title:{display:true,text:"Cena (zł)"}},
+                x:{title:{display:true,text:"Data"}}}}
+    });
+  }catch(e){console.error("Nie udało się załadować wykresu cen:",e);}
+}
+
+/* ----------------- INIT ---------------- */
+load();
+loadPriceChart(document.getElementById("sinceDays").value||90);
+</script>
+</body>
+</html>
