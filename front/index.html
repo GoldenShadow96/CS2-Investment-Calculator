@@ -171,64 +171,135 @@ function renderContextualChart(data){
               x:{stacked:true}}}});
 }
 
-/* ----------------- ANALIZA LOKALNA ---------------- */
+/* ----------------- ANALIZA LOKALNA Z INDEKSEM PRZEJŚĆ ---------------- */
 async function analyzeLocal(){
-  const sinceDays=document.getElementById("sinceDays").value||730;
-  const resDiv=document.getElementById("analysisResult");
-  resDiv.textContent="Ładowanie analizy…";
-  try{
-    const r=await fetch(`${API}/analyze-local?since_days=${sinceDays}`);
-    const d=await r.json();
-    if(!r.ok){ resDiv.textContent=`Błąd: ${d.error}`; return; }
+  const sinceDays = document.getElementById("sinceDays").value || 730;
+  const resDiv    = document.getElementById("analysisResult");
+  resDiv.textContent = "Ładowanie analizy…";
+  try {
+    const r = await fetch(`${API}/analyze-local?since_days=${sinceDays}`);
+    const d = await r.json();
+    if (!r.ok) { resDiv.textContent = `Błąd: ${d.error}`; return; }
 
-    // ------- wyświetlanie ---------------------------------------------
-    const { current_price_raw, current_price_smoothed,
-            current_state, centroids, delta_boundaries,
-            price_boundaries, markov_chain,
-            transition_counts, transition_totals } = d;
+    // Rozpakuj odpowiedź
+    const {
+      current_price_raw,
+      current_price_smoothed,
+      current_state,
+      centroids,
+      delta_boundaries,
+      price_boundaries,
+      markov_chain,
+      transition_counts,
+      transition_totals
+    } = d;
 
-    /*  CENTROIDY Δ  */
-    const centroidLabels=['S2','S1','F','W1','W2'];
-    const centList=`<ul>${centroids.map((c,i)=>`<li>Centroid ${centroidLabels[i]}: ${fmt(c,4)}</li>`).join('')}</ul>`;
+    // Przygotuj płaską listę przejść
+    const transitionsFlat = Object.entries(markov_chain)
+      .flatMap(([from,toObj]) =>
+        Object.entries(toObj).map(([to,val]) => ({
+          from, to, val,
+          count: transition_counts[`${from}→${to}`] || 0
+        }))
+      )
+      .sort((a,b) => {
+        // najpierw po from, potem po val malejąco
+        if (a.from !== b.from) return a.from.localeCompare(b.from);
+        return b.val - a.val;
+      });
 
-    /*  GRANICE Δ  */
-    const deltaNames=['S2 (min)', 'S2/S1', 'S1/F', 'F/W1', 'W1/W2', 'W2 (max)'];
-    const deltaList=`<ul>${delta_boundaries.map((b,i)=>`<li>${deltaNames[i]}: ${fmt(b,4)}</li>`).join('')}</ul>`;
+    const totalEntries = transitionsFlat.length;
 
-    /*  GRANICE CENY  */
-    const priceList=`<ul>${
-      price_boundaries.map((b,i)=>
-        `<li>${i===0?'min':i===5?'max':i*20+'%'}: ${fmt(b,4)}</li>`).join('')
-    }</ul>`;
+    // Zbuduj tabelę z indeksem i ilością wpisów
+    const markovTable = `
+      <p><strong>Ilość wpisów w tabeli:</strong> ${totalEntries}</p>
+      <div class="scroll-x">
+        <table id="markovTable">
+          <thead><tr>
+            <th data-type="number">#</th>
+            <th data-type="text">z</th>
+            <th data-type="text">do</th>
+            <th data-type="number">P</th>
+            <th data-type="number">n</th>
+          </tr></thead>
+          <tbody>
+            ${transitionsFlat.map((o,i) => `
+              <tr>
+                <td>${i+1}</td>
+                <td>${o.from}</td>
+                <td>${o.to}</td>
+                <td>${o.val}</td>
+                <td>${o.count}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
 
-    /*  MACIERZ MARKOWA – top 10 przejść żeby nie zalać UI */
-    const transitionsFlat=Object.entries(markov_chain).flatMap(
-      ([from,toObj])=>Object.entries(toObj).map(([to,val])=>({from,to,val}))
-    ).filter(o=>o.val>0).sort((a,b)=>b.val-a.val).slice(0,15);
-    const markovTable=`
-      <div class="scroll-x"><table>
-        <thead><tr><th>z</th><th>do</th><th>P</th><th>n</th></tr></thead>
-        <tbody>${transitionsFlat.map(o=>`
-          <tr><td>${o.from}</td><td>${o.to}</td><td>${o.val}</td>
-              <td>${transition_counts[`${o.from}→${o.to}`]||0}</td></tr>`).join('')}
-        </tbody>
-      </table></div>`;
-
-    resDiv.innerHTML=`
+    // Wstaw całość do resDiv
+    resDiv.innerHTML = `
       <p>📌 <strong>Aktualna cena (raw):</strong> ${fmt(current_price_raw,4)} zł
          &nbsp;|&nbsp; <strong>SMA-3:</strong> ${fmt(current_price_smoothed,4)} zł</p>
       <p>🎯 <strong>Bieżący stan:</strong> ${current_state}</p>
-      <details open><summary><strong>Centroidy Δ</strong></summary>${centList}</details>
-      <details><summary><strong>Granice Δ</strong></summary>${deltaList}</details>
-      <details><summary><strong>Granice ceny (kwantyle)</strong></summary>${priceList}</details>
-      <details open><summary><strong>Łańcuch Markowa – top przejścia</strong></summary>${markovTable}</details>
+      <details open><summary><strong>Centroidy Δ</strong></summary>
+        <ul>${
+          centroids.map((c,i)=>
+            `<li>Centroid ${['S2','S1','F','W1','W2'][i]}: ${fmt(c,4)}</li>`
+          ).join('')
+        }</ul>
+      </details>
+      <details><summary><strong>Granice Δ</strong></summary>
+        <ul>${
+          delta_boundaries.map((b,i)=>
+            `<li>${['S2 (min)','S2/S1','S1/F','F/W1','W1/W2','W2 (max)'][i]}: ${fmt(b,4)}</li>`
+          ).join('')
+        }</ul>
+      </details>
+      <details><summary><strong>Granice ceny (kwantyle)</strong></summary>
+        <ul>${
+          price_boundaries.map((b,i)=>{
+            const label = i===0 ? 'min' : i===5 ? 'max' : (i*20)+'%';
+            return `<li>${label}: ${fmt(b,4)}</li>`;
+          }).join('')
+        }</ul>
+      </details>
+      <details open><summary><strong>Łańcuch Markowa – wszystkie przejścia</strong></summary>
+        ${markovTable}
+      </details>
     `;
-  }catch(e){
-    resDiv.textContent="Nie udało się pobrać danych analizy.";
+
+    // --- DYNAMICZNE SORTOWANIE TABELI markovTable ---
+    const table = document.getElementById("markovTable");
+    const headers = Array.from(table.querySelectorAll("th"));
+    headers.forEach((th, colIndex) => {
+      let asc = true;
+      th.style.cursor = "pointer";
+      th.addEventListener("click", () => {
+        const tbody = table.tBodies[0];
+        const rows = Array.from(tbody.rows);
+        const type = th.dataset.type;
+        rows.sort((a, b) => {
+          let aVal = a.cells[colIndex].textContent.trim();
+          let bVal = b.cells[colIndex].textContent.trim();
+          if (type === "number") {
+            aVal = parseFloat(aVal);
+            bVal = parseFloat(bVal);
+          }
+          if (aVal > bVal) return asc ? 1 : -1;
+          if (aVal < bVal) return asc ? -1 : 1;
+          return 0;
+        });
+        rows.forEach(r => tbody.appendChild(r));
+        asc = !asc;
+      });
+    });
+
+  } catch(e) {
+    resDiv.textContent = "Nie udało się pobrać danych analizy.";
     console.error(e);
   }
   loadPriceChart(sinceDays);
 }
+
 
 /* ----------------- IMPORT PRICEHISTORY + WYKRES CEN ---------------- */
 function openPriceHistory(){

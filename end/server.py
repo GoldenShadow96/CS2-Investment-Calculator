@@ -83,7 +83,7 @@ def analyze_local():
     """
     # ------------------------ parametry & dane ------------------------------
     since_days = int(request.args.get('since_days', 730))
-    SMA_WINDOW = 1                     #  <‑‑ lekkie wygładzenie
+    SMA_WINDOW = 3                     #  <‑‑ lekkie wygładzenie
 
     if not os.path.exists(PRICE_FILE):
         return jsonify({'error': 'Brak pliku markethistory.json'}), 400
